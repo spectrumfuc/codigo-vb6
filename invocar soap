@@ -1,0 +1,116 @@
+'Agregar referencia a Microsoft XML, V3.0
+'En el formulario agregar un control Inet, si no se encuentra en el panel de controles, 
+'agregar la referencia de componentes Microsoft Internet Transfer Control 6.0 (SP6)
+
+
+Private XmlRes As String
+Private Const XmlFonasa = _
+    "<?xml version=""1.0"" encoding=""utf-8""?>" & _
+    "<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:fon=""http://192.168.1.10/ws/fonasa/"">" & _
+       "<soapenv:Header>" & _
+          "<fon:Autenticacion>" & _
+             "<fon:NombreUsuario>@Usuario</fon:NombreUsuario>" & _
+             "<fon:Password>@Password</fon:Password>" & _
+          "</fon:Autenticacion>" & _
+       "</soapenv:Header>" & _
+       "<soapenv:Body>" & _
+          "<fon:CertificadorPrevisional>" & _
+             "<fon:Rut>" & _
+                "<fon:Numero>@RUT</fon:Numero>" & _
+                "<fon:Digito>@DV</fon:Digito>" & _
+             "</fon:Rut>" & _
+          "</fon:CertificadorPrevisional>" & _
+       "</soapenv:Body>" & _
+    "</soapenv:Envelope>"
+ 
+ 
+'###################################################################################################################################################################################
+'###################################################################################################################################################################################
+'###################################################################################################################################################################################
+'###################################################################################################################################################################################
+'###################                                                                                                                                             ###################
+'###################                                    Utilizar esta funcion para certificar previsionalmente a un paciente                                     ###################
+'###################                                                  Ricardo Rojas 12/04/2017                                                                   ###################
+'###################################################################################################################################################################################
+'###################################################################################################################################################################################
+'###################################################################################################################################################################################
+Private Function Certificar(ByVal Rut As Long, ByVal Dv As String) As String
+Dim XmlR As String
+Dim vCoddesc As String
+Dim vErrorM As String
+Dim vdesIsapre As String
+Dim vEstado As String
+Dim vTramo As String
+Dim vFF As String
+
+    Dim parser As DOMDocument
+    Set parser = New DOMDocument
+On Error Resume Next
+    
+    XmlR = LocalCertificar(Rut, Dv)
+    parser.loadXML XmlR
+    vEstado = parser.selectSingleNode("/soap:Envelope/soap:Body/CertificadorPrevisionalResponse/CertificadorPrevisionalResult/replyTO/estado").Text
+    vErrorM = parser.selectSingleNode("/soap:Envelope/soap:Body/CertificadorPrevisionalResponse/CertificadorPrevisionalResult/replyTO/errorM").Text
+    vTramo = parser.selectSingleNode("/soap:Envelope/soap:Body/CertificadorPrevisionalResponse/CertificadorPrevisionalResult/afiliadoTO/tramo").Text
+    vCoddesc = parser.selectSingleNode("/soap:Envelope/soap:Body/CertificadorPrevisionalResponse/CertificadorPrevisionalResult/coddesc").Text
+    vdesIsapre = parser.selectSingleNode("/soap:Envelope/soap:Body/CertificadorPrevisionalResponse/CertificadorPrevisionalResult/desIsapre").Text
+    vFF = parser.selectSingleNode("/soap:Envelope/soap:Body/CertificadorPrevisionalResponse/CertificadorPrevisionalResult/beneficiarioTO/fechaFallecimiento").Text
+        
+    If vEstado = "0" Then
+        If vTramo = "A" Or vTramo = "B" Or vTramo = "C" Or vTramo = "D" Then
+            Certificar = "FONASA " & vTramo
+        Else
+            Certificar = vCoddesc & " " & vdesIsapre
+        End If
+    Else
+        Certificar = vErrorM
+    End If
+    If vFF <> "0000-00-00" Then
+        Certificar = Certificar & " " & vFF
+    End If
+
+End Function
+ 
+ 
+Private Function LocalCertificar(ByVal Rut As Long, ByVal Dv As String) As String
+    Dim vXml As String
+    Dim parser As DOMDocument
+    Set parser = New DOMDocument
+    
+    'carga de parametros de consulta
+    vXml = XmlFonasa
+    vXml = Replace(vXml, "@RUT", Rut)
+    vXml = Replace(vXml, "@DV", Dv)
+    
+    ' cargar el código SOAP
+    parser.loadXML vXml
+
+    ' Mostrar el código XML enviado al servicio Web
+    ' Usar el control Inet para realizar la operación HTTP POST
+    Inet1.Execute "http://192.168.1.10/ws/fonasa/CertificadorPrevisional.asmx", "POST", parser.xml, _
+                  "Content-Type: text/xml; charset=utf-8" & vbCrLf & "SOAPAction: http://10.6.50.4/ws/fonasa/CertificadorPrevisional"
+                                      
+    While Inet1.StillExecuting
+        DoEvents
+    Wend
+    LocalCertificar = XmlRes
+    
+   
+End Function
+
+Private Sub Inet1_StateChanged(ByVal State As Integer)
+    If (State = icResponseCompleted) Then ' icResponseCompleted = 12
+        Dim XmlR As String
+        ' Leer los datos devueltos por el servidor
+        XmlR = Inet1.GetChunk(4096)
+
+        XmlR = Replace(XmlR, " xmlns=""http://certificadorprevisional.fonasa.gov.cl.ws/""", "")
+        XmlR = Replace(XmlR, " xmlns=""http://192.168.1.10/ws/fonasa/""", "")
+        '
+        XmlRes = XmlR
+    End If
+End Sub
+
+Private Sub Command1_Click()
+   Me.Text1.Text = Certificar(CLng(txtRut.Text), UCase(txtDv.Text))
+End Sub
